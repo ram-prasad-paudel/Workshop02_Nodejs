@@ -2,72 +2,85 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// Helper function to serve HTML files
+function serveFile(filePath, contentType, res, statusCode = 200) {
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      handleServerError(res);
+    } else {
+      res.writeHead(statusCode, { 'Content-Type': contentType });
+      res.end(data);
+    }
+  });
+}
+
+// 404 Error Handler
+function handle404(res) {
+  const filePath = path.join(__dirname, '404.html');
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('404 Not Found');
+    } else {
+      res.writeHead(404, { 'Content-Type': 'text/html' });
+      res.end(data);
+    }
+  });
+}
+
+// 500 Error Handler
+function handleServerError(res) {
+  const filePath = path.join(__dirname, '500.html');
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('500 Internal Server Error');
+    } else {
+      res.writeHead(500, { 'Content-Type': 'text/html' });
+      res.end(data);
+    }
+  });
+}
 
 const server = http.createServer((req, res) => {
-    console.log(`Received request for: ${req.url}`);
+  const parsedUrl = req.url;
 
-    // Map root URL to index.html
-    let reqPath = req.url === '/' ? '/index.html' : req.url;
+  // Task 2 & 3: HTML Routing
+  if (parsedUrl === '/' || parsedUrl === '/index.html') {
+    serveFile(path.join(__dirname, 'index.html'), 'text/html', res);
+  } else if (parsedUrl === '/about' || parsedUrl === '/about.html') {
+    serveFile(path.join(__dirname, 'about.html'), 'text/html', res);
+  } else if (parsedUrl === '/contact' || parsedUrl === '/contact.html') {
+    serveFile(path.join(__dirname, 'contact.html'), 'text/html', res);
+  } 
+  // Task 6: Bonus API Endpoint
+  else if (parsedUrl === '/api/time') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const timeData = { currentTime: new Date().toISOString() };
+    res.end(JSON.stringify(timeData));
+  } 
+  // Task 4: CSS Files with Path Traversal Security
+  else if (parsedUrl.startsWith('/styles/')) {
+    const safePath = path.normalize(parsedUrl).replace(/^(\.\.[\/\\])+/, '');
+    const filePath = path.join(__dirname, 'public', safePath);
 
-    // Strip leading slash to prevent path.join from treating it as an absolute path
-    if (reqPath.startsWith('/')) {
-        reqPath = reqPath.slice(1);
+    // Security check against directory traversal
+    if (!filePath.startsWith(path.join(__dirname, 'public'))) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('403 Forbidden');
+      return;
     }
 
-    // Resolve file path inside the 'public' directory
-    const filePath = path.join(__dirname, 'public', reqPath);
-
-    // Determine the MIME type based on file extension
-    const extname = path.extname(filePath);
-    let contentType = 'text/html';
-
-    switch (extname) {
-        case '.css':
-            contentType = 'text/css';
-            break;
-        case '.html':
-            contentType = 'text/html';
-            break;
-        case '.js':
-            contentType = 'text/javascript';
-            break;
-        case '.json':
-            contentType = 'application/json';
-            break;
-        case '.png':
-            contentType = 'image/png';
-            break;
-        case '.jpg':
-        case '.jpeg':
-            contentType = 'image/jpeg';
-            break;
-    }
-
-    // Read and serve the file from the filesystem
-    fs.readFile(filePath, (err, content) => {
-        if (err) {
-            if (err.code === 'ENOENT') {
-                // File not found -> Serve custom 404 page
-                fs.readFile(path.join(__dirname, 'public', '404.html'), (err404, page404) => {
-                    res.writeHead(404, { 'Content-Type': 'text/html' });
-                    res.end(page404 || '<h1>404 Not Found</h1>', 'utf-8');
-                });
-            } else {
-                // Other server error -> Serve custom 500 page
-                fs.readFile(path.join(__dirname, 'public', '500.html'), (err500, page500) => {
-                    res.writeHead(500, { 'Content-Type': 'text/html' });
-                    res.end(page500 || '<h1>500 Internal Server Error</h1>', 'utf-8');
-                });
-            }
-        } else {
-            // Success -> Return file content with proper content-type header
-            res.writeHead(200, { 'Content-Type': contentType });
-            res.end(content, 'utf-8');
-        }
-    });
+    serveFile(filePath, 'text/css', res);
+  } 
+  // Task 5: Custom 404 for everything else
+  else {
+    handle404(res);
+  }
 });
 
 server.listen(PORT, () => {
-    console.log(`Server is running at http://localhost:${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
